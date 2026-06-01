@@ -261,16 +261,54 @@ You must respond ONLY with a JSON object in this exact format (do NOT wrap it in
     let roastResult = { roast: '', fix: '' };
     try {
       let cleanedContent = responseText.trim();
-      if (cleanedContent.startsWith('```')) {
+      
+      // Look for the first '{' and the last '}' to extract raw JSON cleanly
+      const firstCurly = cleanedContent.indexOf('{');
+      const lastCurly = cleanedContent.lastIndexOf('}');
+      
+      if (firstCurly !== -1 && lastCurly !== -1 && lastCurly > firstCurly) {
+        cleanedContent = cleanedContent.substring(firstCurly, lastCurly + 1);
+      } else if (cleanedContent.startsWith('```')) {
         cleanedContent = cleanedContent.replace(/^```json\s*/, '').replace(/```$/, '').trim();
       }
+      
       roastResult = JSON.parse(cleanedContent);
     } catch (parseJsonErr) {
       console.error('AI JSON Parse Error, content:', responseText);
-      roastResult = {
-        roast: responseText,
-        fix: 'مقدرناش نقسم النص بشكل تلقائي. اقرأ الـ Roast فوق وفلتر منه النصايح بنفسك يا بطل!'
-      };
+      
+      // Fallback: Try to split the text manually if we can find typical headers
+      const markers = [
+        'خريطة الطريق',
+        'خريطة التصليح',
+        'النصائح',
+        'الخطوات',
+        'طريقة التصليح',
+        'الاصلاح',
+        'fix',
+        'Fix:',
+        'Roadmap'
+      ];
+      
+      let splitIndex = -1;
+      for (const marker of markers) {
+        const idx = responseText.indexOf(marker);
+        if (idx !== -1) {
+          splitIndex = idx;
+          break;
+        }
+      }
+      
+      if (splitIndex !== -1) {
+        roastResult = {
+          roast: responseText.substring(0, splitIndex).trim(),
+          fix: responseText.substring(splitIndex).trim()
+        };
+      } else {
+        roastResult = {
+          roast: responseText,
+          fix: 'مقدرناش نقسم النص بشكل تلقائي. اقرأ الـ Roast فوق وفلتر منه النصايح بنفسك يا بطل!'
+        };
+      }
     }
 
     // 5. Increment total_cvs_roasted in Supabase
