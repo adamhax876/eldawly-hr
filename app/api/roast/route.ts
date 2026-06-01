@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(arrayBuffer);
     
     let cvText = '';
+    let parserInstance: any = null;
     try {
       // Polyfill browser globals that pdf-parse / pdfjs-dist requires at runtime in Node.js
       if (typeof globalThis.DOMMatrix === 'undefined') {
@@ -61,15 +62,28 @@ export async function POST(request: Request) {
       }
 
       // @ts-ignore
-      const pdfParser = require('pdf-parse');
-      const parsedPdf = await pdfParser(buffer);
-      cvText = parsedPdf.text || '';
+      const { PDFParse } = require('pdf-parse');
+      
+      // Convert Buffer to Uint8Array as required by pdf-parse v2
+      const uint8Array = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      parserInstance = new PDFParse(uint8Array);
+      
+      const result = await parserInstance.getText();
+      cvText = result.text || '';
     } catch (parseError: any) {
       console.error('PDF Parse Error:', parseError);
       return NextResponse.json({ 
         success: false, 
         error: 'فشلنا في قراءة ملف الـ PDF. اتأكد إنه مش صورة أو ملف محمي.' 
       }, { status: 400 });
+    } finally {
+      if (parserInstance && typeof parserInstance.destroy === 'function') {
+        try {
+          await parserInstance.destroy();
+        } catch (err) {
+          console.error('Error destroying pdf parser:', err);
+        }
+      }
     }
 
     if (!cvText.trim()) {
