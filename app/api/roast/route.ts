@@ -151,130 +151,110 @@ You must respond ONLY with a JSON object in this exact format (do NOT wrap it in
 
     let responseText = '';
 
-    // Create a 25-second AbortController to prevent indefinite hangs
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    if (activeProvider === 'openrouter') {
+      const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://eldawly-hr.com',
+          'X-Title': 'Eldawly HR',
+        },
+        body: JSON.stringify({
+          model: activeModel || 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
 
-    try {
-      if (activeProvider === 'openrouter') {
-        const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://eldawly-hr.com',
-            'X-Title': 'Eldawly HR',
-          },
-          body: JSON.stringify({
-            model: activeModel || 'google/gemini-2.5-flash',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
-            ],
-            response_format: { type: 'json_object' }
-          }),
-          signal: controller.signal
-        });
+      if (!openRouterResponse.ok) {
+        const errText = await openRouterResponse.text();
+        console.error('OpenRouter API error:', errText);
+        return NextResponse.json({ 
+          success: false, 
+          error: 'فشل في الاتصال بمزود الخدمة OpenRouter. جرب تاني أو غير المزود من لوحة التحكم.' 
+        }, { status: 502 });
+      }
 
-        if (!openRouterResponse.ok) {
-          const errText = await openRouterResponse.text();
-          console.error('OpenRouter API error:', errText);
-          return NextResponse.json({ 
-            success: false, 
-            error: 'فشل في الاتصال بمزود الخدمة OpenRouter. جرب تاني أو غير المزود من لوحة التحكم.' 
-          }, { status: 502 });
-        }
+      const aiResult = await openRouterResponse.json();
+      responseText = aiResult.choices?.[0]?.message?.content || '';
 
-        const aiResult = await openRouterResponse.json();
-        responseText = aiResult.choices?.[0]?.message?.content || '';
+    } else if (activeProvider === 'google') {
+      // Direct Google Gemini API call
+      let geminiModelName = activeModel || 'gemini-2.5-flash';
+      if (geminiModelName.includes('/')) {
+        geminiModelName = geminiModelName.split('/').pop() || geminiModelName;
+      }
 
-      } else if (activeProvider === 'google') {
-        // Direct Google Gemini API call
-        let geminiModelName = activeModel || 'gemini-2.5-flash';
-        if (geminiModelName.includes('/')) {
-          geminiModelName = geminiModelName.split('/').pop() || geminiModelName;
-        }
-
-        const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModelName}:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  { text: `${systemPrompt}\n\nHere is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
-                ]
-              }
-            ],
-            generationConfig: {
-              responseMimeType: 'application/json'
+      const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModelName}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: `${systemPrompt}\n\nHere is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
+              ]
             }
-          }),
-          signal: controller.signal
-        });
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json'
+          }
+        })
+      });
 
-        if (!geminiResponse.ok) {
-          const errText = await geminiResponse.text();
-          console.error('Google Gemini API error:', errText);
-          return NextResponse.json({ 
-            success: false, 
-            error: 'فشل في الاتصال المباشر بـ Google Gemini API. اتأكد من صحة مفتاح Gemini أو الموديل المختار.' 
-          }, { status: 502 });
-        }
-
-        const aiResult = await geminiResponse.json();
-        responseText = aiResult.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-      } else if (activeProvider === 'groq') {
-        // Direct Groq API call
-        let groqModelName = activeModel || 'llama-3.3-70b-versatile';
-        if (groqModelName.includes('/')) {
-          groqModelName = groqModelName.split('/').pop() || groqModelName;
-        }
-
-        const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: groqModelName,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
-            ],
-            response_format: { type: 'json_object' }
-          }),
-          signal: controller.signal
-        });
-
-        if (!groqResponse.ok) {
-          const errText = await groqResponse.text();
-          console.error('Groq API error:', errText);
-          return NextResponse.json({ 
-            success: false, 
-            error: 'فشل في الاتصال المباشر بـ Groq API. اتأكد من صحة مفتاح Groq والموديل المختار.' 
-          }, { status: 502 });
-        }
-
-        const aiResult = await groqResponse.json();
-        responseText = aiResult.choices?.[0]?.message?.content || '';
+      if (!geminiResponse.ok) {
+        const errText = await geminiResponse.text();
+        console.error('Google Gemini API error:', errText);
+        return NextResponse.json({ 
+          success: false, 
+          error: 'فشل في الاتصال المباشر بـ Google Gemini API. اتأكد من صحة مفتاح Gemini أو الموديل المختار.' 
+        }, { status: 502 });
       }
-    } catch (fetchErr: any) {
-      if (fetchErr.name === 'AbortError') {
-        console.error('API request timed out (25 seconds limit)');
-        return NextResponse.json({
-          success: false,
-          error: 'طلب الـ AI أخد وقت طويل جداً وتوقف حمايةً للسيرفر. المزود ده مضغوط دلوقتي، برجاء التجربة مرة أخرى أو اختيار مزود أسرع (زي Google Gemini) من لوحة تحكم الأدمن.'
-        }, { status: 504 });
+
+      const aiResult = await geminiResponse.json();
+      responseText = aiResult.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    } else if (activeProvider === 'groq') {
+      // Direct Groq API call
+      let groqModelName = activeModel || 'llama-3.3-70b-versatile';
+      if (groqModelName.includes('/')) {
+        groqModelName = groqModelName.split('/').pop() || groqModelName;
       }
-      throw fetchErr; // Pass other errors to global catch
-    } finally {
-      clearTimeout(timeoutId);
+
+      const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: groqModelName,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!groqResponse.ok) {
+        const errText = await groqResponse.text();
+        console.error('Groq API error:', errText);
+        return NextResponse.json({ 
+          success: false, 
+          error: 'فشل في الاتصال المباشر بـ Groq API. اتأكد من صحة مفتاح Groq والموديل المختار.' 
+        }, { status: 502 });
+      }
+
+      const aiResult = await groqResponse.json();
+      responseText = aiResult.choices?.[0]?.message?.content || '';
     }
 
     // Parse the JSON output from the AI
