@@ -131,123 +131,150 @@ export async function POST(request: Request) {
     }
 
     // 4. Send to Chosen AI Provider API
-    const systemPrompt = `You are "الدولي HR" (The International HR) - a brutally honest, extremely sarcastic, and hilarious Egyptian HR manager.
-Your job is to roast the user's CV in funny, meme-y Egyptian Arabic, and then provide a highly professional, constructive, step-by-step fix in English or Arabic (as appropriate for their CV).
+    const systemPrompt = `You are "الدولي HR" (The International HR) - the most savage, brutally honest, extremely sarcastic, and hilarious Egyptian HR manager.
+Your job is to absolutely destroy and roast the user's CV in highly offensive, savage, and funny Egyptian Arabic, and then provide a highly professional, neat, step-by-step fix/roadmap written ENTIRELY in beautiful, easy-to-read Arabic (العربية العامية أو الفصحى المبسطة) so that it is accessible and clear. Do NOT write the fix in English!
 
-You must be extremely sarcastic about their formatting, empty experiences, exaggerated skills, generic objectives, and typical corporate clichés (like "team player", "working under pressure"). Use common Egyptian slang and jokes (e.g. "يا فخر العرب", "فاخر من الآخر", "بلح", "حمادة بالجنزبيل", "الـ CV ده محتاج غسيل ومكوة").
+For the ROAST:
+- You must be extremely violent and sarcastic about their formatting, empty experiences, exaggerated skills, generic objectives, and typical corporate clichés (like "team player", "working under pressure").
+- Unleash the ultimate Egyptian comedy violence! Use extreme Egyptian slang, jokes, memes, and classic comedy references (e.g., "يا فخر العرب", "بلح", "حمادة بالجنزبيل", "الـ CV ده محتاج غسيل ومكوة", "إنت كاتب كدا عشان تبهرني؟", "مين اللي ضحك عليك وقالك كدا؟", "ده مش سي في ده محضر شرطة", "شغال فوتوشوب؟ ده إنت آخرك تقص الصور وتعمل كوميكس", "خبراتك أبيض من صيني غير مطلي", "ده إنت لو شغال في تجارة الآثار مش هتكتب الغموض ده").
+- Attack their career choices with funny, constructive but deeply offensive humor. Destroy their self-confidence in a hilarious way!
+
+For the FIX:
+- Provide a clear, professional, neat, and highly encouraging step-by-step roadmap to fix the CV.
+- The entire fix MUST be in Arabic, with specific alternative phrasing and formatting tips tailored to their domain.
 
 You must respond ONLY with a JSON object in this exact format (do NOT wrap it in markdown code blocks like \`\`\`json, just return raw JSON):
 {
-  "roast": "Write a long, brutally honest, funny, and sarcastic Egyptian Arabic roast criticizing their CV in detail.",
-  "fix": "Write a professional, encouraging, neat, step-by-step roadmap to fix the CV, offering specific alternative phrasing and formatting tips."
+  "roast": "Write a very long, brutally honest, extremely savage, funny, and sarcastic Egyptian Arabic roast criticizing their CV in detail.",
+  "fix": "Write a professional, encouraging, neat, step-by-step roadmap to fix the CV IN ARABIC, offering specific alternative phrasing and formatting tips."
 }`;
 
     let responseText = '';
 
-    if (activeProvider === 'openrouter') {
-      const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://eldawly-hr.com',
-          'X-Title': 'Eldawly HR',
-        },
-        body: JSON.stringify({
-          model: activeModel || 'google/gemini-2.5-flash',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
-          ],
-          response_format: { type: 'json_object' }
-        })
-      });
+    // Create a 25-second AbortController to prevent indefinite hangs
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
-      if (!openRouterResponse.ok) {
-        const errText = await openRouterResponse.text();
-        console.error('OpenRouter API error:', errText);
-        return NextResponse.json({ 
-          success: false, 
-          error: 'فشل في الاتصال بمزود الخدمة OpenRouter. جرب تاني أو غير المزود من لوحة التحكم.' 
-        }, { status: 502 });
-      }
+    try {
+      if (activeProvider === 'openrouter') {
+        const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://eldawly-hr.com',
+            'X-Title': 'Eldawly HR',
+          },
+          body: JSON.stringify({
+            model: activeModel || 'google/gemini-2.5-flash',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
+            ],
+            response_format: { type: 'json_object' }
+          }),
+          signal: controller.signal
+        });
 
-      const aiResult = await openRouterResponse.json();
-      responseText = aiResult.choices?.[0]?.message?.content || '';
+        if (!openRouterResponse.ok) {
+          const errText = await openRouterResponse.text();
+          console.error('OpenRouter API error:', errText);
+          return NextResponse.json({ 
+            success: false, 
+            error: 'فشل في الاتصال بمزود الخدمة OpenRouter. جرب تاني أو غير المزود من لوحة التحكم.' 
+          }, { status: 502 });
+        }
 
-    } else if (activeProvider === 'google') {
-      // Direct Google Gemini API call
-      let geminiModelName = activeModel || 'gemini-2.5-flash';
-      if (geminiModelName.includes('/')) {
-        geminiModelName = geminiModelName.split('/').pop() || geminiModelName;
-      }
+        const aiResult = await openRouterResponse.json();
+        responseText = aiResult.choices?.[0]?.message?.content || '';
 
-      const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModelName}:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: `${systemPrompt}\n\nHere is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
-              ]
+      } else if (activeProvider === 'google') {
+        // Direct Google Gemini API call
+        let geminiModelName = activeModel || 'gemini-2.5-flash';
+        if (geminiModelName.includes('/')) {
+          geminiModelName = geminiModelName.split('/').pop() || geminiModelName;
+        }
+
+        const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModelName}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: `${systemPrompt}\n\nHere is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json'
             }
-          ],
-          generationConfig: {
-            responseMimeType: 'application/json'
-          }
-        })
-      });
+          }),
+          signal: controller.signal
+        });
 
-      if (!geminiResponse.ok) {
-        const errText = await geminiResponse.text();
-        console.error('Google Gemini API error:', errText);
-        return NextResponse.json({ 
-          success: false, 
-          error: 'فشل في الاتصال المباشر بـ Google Gemini API. اتأكد من صحة مفتاح Gemini أو الموديل المختار.' 
-        }, { status: 502 });
+        if (!geminiResponse.ok) {
+          const errText = await geminiResponse.text();
+          console.error('Google Gemini API error:', errText);
+          return NextResponse.json({ 
+            success: false, 
+            error: 'فشل في الاتصال المباشر بـ Google Gemini API. اتأكد من صحة مفتاح Gemini أو الموديل المختار.' 
+          }, { status: 502 });
+        }
+
+        const aiResult = await geminiResponse.json();
+        responseText = aiResult.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      } else if (activeProvider === 'groq') {
+        // Direct Groq API call
+        let groqModelName = activeModel || 'llama-3.3-70b-versatile';
+        if (groqModelName.includes('/')) {
+          groqModelName = groqModelName.split('/').pop() || groqModelName;
+        }
+
+        const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: groqModelName,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
+            ],
+            response_format: { type: 'json_object' }
+          }),
+          signal: controller.signal
+        });
+
+        if (!groqResponse.ok) {
+          const errText = await groqResponse.text();
+          console.error('Groq API error:', errText);
+          return NextResponse.json({ 
+            success: false, 
+            error: 'فشل في الاتصال المباشر بـ Groq API. اتأكد من صحة مفتاح Groq والموديل المختار.' 
+          }, { status: 502 });
+        }
+
+        const aiResult = await groqResponse.json();
+        responseText = aiResult.choices?.[0]?.message?.content || '';
       }
-
-      const aiResult = await geminiResponse.json();
-      responseText = aiResult.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    } else if (activeProvider === 'groq') {
-      // Direct Groq API call
-      let groqModelName = activeModel || 'llama-3.3-70b-versatile';
-      if (groqModelName.includes('/')) {
-        groqModelName = groqModelName.split('/').pop() || groqModelName;
+    } catch (fetchErr: any) {
+      if (fetchErr.name === 'AbortError') {
+        console.error('API request timed out (25 seconds limit)');
+        return NextResponse.json({
+          success: false,
+          error: 'طلب الـ AI أخد وقت طويل جداً وتوقف حمايةً للسيرفر. المزود ده مضغوط دلوقتي، برجاء التجربة مرة أخرى أو اختيار مزود أسرع (زي Google Gemini) من لوحة تحكم الأدمن.'
+        }, { status: 504 });
       }
-
-      const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: groqModelName,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
-          ],
-          response_format: { type: 'json_object' }
-        })
-      });
-
-      if (!groqResponse.ok) {
-        const errText = await groqResponse.text();
-        console.error('Groq API error:', errText);
-        return NextResponse.json({ 
-          success: false, 
-          error: 'فشل في الاتصال المباشر بـ Groq API. اتأكد من صحة مفتاح Groq والموديل المختار.' 
-        }, { status: 502 });
-      }
-
-      const aiResult = await groqResponse.json();
-      responseText = aiResult.choices?.[0]?.message?.content || '';
+      throw fetchErr; // Pass other errors to global catch
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     // Parse the JSON output from the AI
