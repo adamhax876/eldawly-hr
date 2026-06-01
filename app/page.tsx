@@ -289,7 +289,11 @@ export default function Home() {
                         </div>
                         <div>
                           <p className="text-sm font-bold text-slate-200 truncate max-w-xs mx-auto">{file.name}</p>
-                          <p className="text-xs text-slate-400">حجم الملف: {(file.size / 1024 / 1024).toFixed(2)} ميجابايت</p>
+                          <p className="text-xs text-slate-400">
+                            حجم الملف: {file.size >= 1024 * 1024 
+                              ? `${(file.size / 1024 / 1024).toFixed(2)} ميجابايت` 
+                              : `${(file.size / 1024).toFixed(1)} كيلوبايت`}
+                          </p>
                         </div>
                         <span className="text-[10px] text-emerald-300 font-bold bg-emerald-500/10 py-1 px-3 rounded-full inline-block">
                           الملف جاهز للفرم! 📄

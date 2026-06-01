@@ -151,7 +151,7 @@ You must respond ONLY with a JSON object in this exact format (do NOT wrap it in
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://eldawly-hr.com',
-          'X-Title': 'الدولي HR',
+          'X-Title': 'Eldawly HR',
         },
         body: JSON.stringify({
           model: activeModel || 'google/gemini-2.5-flash',
