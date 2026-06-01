@@ -16,14 +16,34 @@ export default function AdminDashboard() {
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Dashboard values
   const [stats, setStats] = useState<{ total_visitors: number; total_cvs_roasted: number } | null>(null);
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
+  
+  // Multiple AI API Keys and settings
+  const [openRouterKey, setOpenRouterKey] = useState('');
+  const [geminiKey, setGeminiKey] = useState('');
+  const [groqKey, setGroqKey] = useState('');
+  const [aiProvider, setAiProvider] = useState('openrouter');
+  const [aiModel, setAiModel] = useState('google/gemini-2.5-flash');
+
+  const [showOpenRouterKey, setShowOpenRouterKey] = useState(false);
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showGroqKey, setShowGroqKey] = useState(false);
+
   const [configLoading, setConfigLoading] = useState(false);
   const [configSuccess, setConfigSuccess] = useState(false);
+
+  // Dynamic OpenRouter Free Models state
+  const [openRouterModels, setOpenRouterModels] = useState<Array<{ id: string; name: string }>>([
+    { id: 'google/gemini-2.5-flash', name: 'Google: Gemini 2.5 Flash (Free)' },
+    { id: 'google/gemini-2.5-pro', name: 'Google: Gemini 2.5 Pro (Free)' },
+    { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Meta: Llama 3.3 70B (Free)' },
+    { id: 'deepseek/deepseek-chat:free', name: 'DeepSeek: V3 (Free)' }
+  ]);
+  const [fetchingModels, setFetchingModels] = useState(false);
 
   const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL || '';
 
@@ -43,7 +63,42 @@ export default function AdminDashboard() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. Fetch data once session exists and email is validated
+  // 2. Fetch active OpenRouter free models in real-time
+  useEffect(() => {
+    const fetchOpenRouterModels = async () => {
+      setFetchingModels(true);
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/models');
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data && Array.isArray(json.data)) {
+            const freeModels = json.data
+              .filter((m: any) => {
+                const promptPrice = parseFloat(m.pricing?.prompt || '0');
+                const completionPrice = parseFloat(m.pricing?.completion || '0');
+                return promptPrice === 0 && completionPrice === 0;
+              })
+              .map((m: any) => ({
+                id: m.id,
+                name: m.name || m.id
+              }));
+            
+            if (freeModels.length > 0) {
+              setOpenRouterModels(freeModels);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch OpenRouter models:', err);
+      } finally {
+        setFetchingModels(false);
+      }
+    };
+
+    fetchOpenRouterModels();
+  }, []);
+
+  // 3. Fetch data once session exists and email is validated
   useEffect(() => {
     if (session && user && (!adminEmail || user.email === adminEmail)) {
       fetchDashboardData();
@@ -60,15 +115,20 @@ export default function AdminDashboard() {
         setStats(statsData.stats);
       }
 
-      // Fetch config API key from database
+      // Fetch config keys from database
       const configRes = await fetch('/api/admin/config', {
         headers: {
           'Authorization': `Bearer ${session.access_token}`
         }
       });
       const configData = await configRes.json();
-      if (configData.success) {
-        setApiKey(configData.value);
+      if (configData.success && configData.configs) {
+        const configs = configData.configs;
+        setOpenRouterKey(configs['OPENROUTER_API_KEY'] || '');
+        setGeminiKey(configs['GEMINI_API_KEY'] || '');
+        setGroqKey(configs['GROQ_API_KEY'] || '');
+        setAiProvider(configs['AI_PROVIDER'] || 'openrouter');
+        setAiModel(configs['AI_MODEL'] || 'google/gemini-2.5-flash');
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -77,7 +137,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // 3. Authenticate admin
+  // 4. Authenticate admin
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitLoading(true);
@@ -107,12 +167,16 @@ export default function AdminDashboard() {
     setSession(null);
     setUser(null);
     setStats(null);
-    setApiKey('');
+    setOpenRouterKey('');
+    setGeminiKey('');
+    setGroqKey('');
+    setAiProvider('openrouter');
+    setAiModel('google/gemini-2.5-flash');
     setError(null);
   };
 
-  // 4. Update config API key
-  const handleSaveApiKey = async (e: React.FormEvent) => {
+  // 5. Update config settings
+  const handleSaveConfigs = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!session) return;
     
@@ -127,12 +191,20 @@ export default function AdminDashboard() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ value: apiKey }),
+        body: JSON.stringify({
+          configs: {
+            OPENROUTER_API_KEY: openRouterKey,
+            GEMINI_API_KEY: geminiKey,
+            GROQ_API_KEY: groqKey,
+            AI_PROVIDER: aiProvider,
+            AI_MODEL: aiModel
+          }
+        }),
       });
 
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'فشل حفظ مفتاح الـ API');
+        throw new Error(data.error || 'فشل حفظ الإعدادات');
       }
 
       setConfigSuccess(true);
@@ -206,7 +278,7 @@ export default function AdminDashboard() {
               <label className="text-xs font-bold text-slate-300">كلمة المرور</label>
               <div className="relative">
                 <input
-                  type={showApiKey ? "text" : "password"}
+                  type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -216,10 +288,10 @@ export default function AdminDashboard() {
                 <Lock className="absolute left-3.5 top-3.5 text-slate-500" size={16} />
                 <button
                   type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
+                  onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3.5 top-3.5 text-slate-500 hover:text-slate-300 transition-colors"
                 >
-                  {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
@@ -369,38 +441,201 @@ export default function AdminDashboard() {
         {/* Configuration Panel */}
         <div className="bg-slate-900/40 backdrop-blur-md rounded-2xl border border-slate-800 p-6 space-y-6 relative">
           <div className="border-b border-slate-800 pb-4">
-            <h3 className="font-bold text-lg text-slate-200">إدارة مفتاح محرك الـ AI (OpenRouter) ⚙️</h3>
+            <h3 className="font-bold text-lg text-slate-200">إدارة محرك ومفاتيح الذكاء الاصطناعي (AI Engines) ⚙️</h3>
             <p className="text-xs text-slate-400 mt-1">
-              مفتاح الـ API بيتحفظ مباشرة في جدول <code className="text-amber-400 bg-slate-950 py-0.5 px-1.5 rounded">config</code> بقاعدة بيانات Supabase، وبيسحب منه سيرفر الـ API في كل طلب بشكل آمن، مش من متغيرات البيئة المحلية.
+              اختر مزوّد الخدمة النشط وقم بتهيئة مفاتيح الـ API الخاصة بك. يتم حفظ الإعدادات بأمان في قاعدة بيانات Supabase واستدعاؤها عند الحاجة.
             </p>
           </div>
 
           {configLoading ? (
             <div className="flex items-center gap-3 py-6">
               <Loader2 className="animate-spin text-amber-400" size={24} />
-              <p className="text-sm text-slate-400">جاري سحب مفتاح الـ API من الخزنة...</p>
+              <p className="text-sm text-slate-400">جاري استرجاع إعدادات محرك الـ AI من الخزنة...</p>
             </div>
           ) : (
-            <form onSubmit={handleSaveApiKey} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">OpenRouter API Key (sk-or-...)</label>
-                <div className="relative">
-                  <input
-                    type={showApiKey ? "text" : "password"}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-or-v1-..."
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-xl py-3 px-4 pl-10 text-sm transition-colors text-left font-mono"
-                  />
-                  <Lock className="absolute left-3.5 top-3.5 text-slate-500" size={16} />
+            <form onSubmit={handleSaveConfigs} className="space-y-6">
+              {/* 1. AI Provider Grid Selector */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-300">مزوّد الخدمة النشط (Active AI Provider)</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* OpenRouter */}
                   <button
                     type="button"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-3.5 top-3.5 text-slate-500 hover:text-slate-300 transition-colors"
+                    onClick={() => {
+                      setAiProvider('openrouter');
+                      setAiModel('google/gemini-2.5-flash');
+                    }}
+                    className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all duration-200 cursor-pointer ${
+                      aiProvider === 'openrouter'
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.1)]'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
                   >
-                    {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    <Settings size={20} className={aiProvider === 'openrouter' ? 'text-amber-400' : 'text-slate-500'} />
+                    <span className="font-bold text-sm">OpenRouter</span>
+                    <span className="text-[10px] text-slate-500 text-center">بوابة موحدة للنماذج المجانية</span>
+                  </button>
+
+                  {/* Google AI Studio */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiProvider('google');
+                      setAiModel('gemini-2.5-flash');
+                    }}
+                    className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all duration-200 cursor-pointer ${
+                      aiProvider === 'google'
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.1)]'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    <Users size={20} className={aiProvider === 'google' ? 'text-amber-400' : 'text-slate-500'} />
+                    <span className="font-bold text-sm">Google AI Studio</span>
+                    <span className="text-[10px] text-slate-500 text-center">مباشر بمفتاح Gemini الخاص بك</span>
+                  </button>
+
+                  {/* Groq Cloud */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiProvider('groq');
+                      setAiModel('llama-3.3-70b-specdec');
+                    }}
+                    className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all duration-200 cursor-pointer ${
+                      aiProvider === 'groq'
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.1)]'
+                        : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    <Flame size={20} className={aiProvider === 'groq' ? 'text-amber-400' : 'text-slate-500'} />
+                    <span className="font-bold text-sm">Groq Cloud</span>
+                    <span className="text-[10px] text-slate-500 text-center">مباشر بمفتاح جروك السريع</span>
                   </button>
                 </div>
+              </div>
+
+              {/* 2. Dynamic API Key Field according to active provider */}
+              <div className="space-y-4 pt-2">
+                {aiProvider === 'openrouter' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-300">OpenRouter API Key (sk-or-...)</label>
+                    <div className="relative">
+                      <input
+                        type={showOpenRouterKey ? "text" : "password"}
+                        value={openRouterKey}
+                        onChange={(e) => setOpenRouterKey(e.target.value)}
+                        placeholder="sk-or-v1-..."
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-xl py-3 px-4 pl-10 text-sm transition-colors text-left font-mono"
+                      />
+                      <Lock className="absolute left-3.5 top-3.5 text-slate-500" size={16} />
+                      <button
+                        type="button"
+                        onClick={() => setShowOpenRouterKey(!showOpenRouterKey)}
+                        className="absolute right-3.5 top-3.5 text-slate-500 hover:text-slate-300 transition-colors"
+                      >
+                        {showOpenRouterKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {aiProvider === 'google' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-300">Google Gemini API Key (AI Studio)</label>
+                    <div className="relative">
+                      <input
+                        type={showGeminiKey ? "text" : "password"}
+                        value={geminiKey}
+                        onChange={(e) => setGeminiKey(e.target.value)}
+                        placeholder="AIzaSy..."
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-xl py-3 px-4 pl-10 text-sm transition-colors text-left font-mono"
+                      />
+                      <Lock className="absolute left-3.5 top-3.5 text-slate-500" size={16} />
+                      <button
+                        type="button"
+                        onClick={() => setShowGeminiKey(!showGeminiKey)}
+                        className="absolute right-3.5 top-3.5 text-slate-500 hover:text-slate-300 transition-colors"
+                      >
+                        {showGeminiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {aiProvider === 'groq' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-300">Groq Cloud API Key</label>
+                    <div className="relative">
+                      <input
+                        type={showGroqKey ? "text" : "password"}
+                        value={groqKey}
+                        onChange={(e) => setGroqKey(e.target.value)}
+                        placeholder="gsk_..."
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-xl py-3 px-4 pl-10 text-sm transition-colors text-left font-mono"
+                      />
+                      <Lock className="absolute left-3.5 top-3.5 text-slate-500" size={16} />
+                      <button
+                        type="button"
+                        onClick={() => setShowGroqKey(!showGroqKey)}
+                        className="absolute right-3.5 top-3.5 text-slate-500 hover:text-slate-300 transition-colors"
+                      >
+                        {showGroqKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. AI Model Selection Dropdown */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                  <span>النموذج النشط (Active AI Model)</span>
+                  {aiProvider === 'openrouter' && fetchingModels && (
+                    <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                      <Loader2 className="animate-spin" size={10} />
+                      جاري تحديث النماذج المجانية...
+                    </span>
+                  )}
+                </label>
+
+                {aiProvider === 'openrouter' && (
+                  <select
+                    value={aiModel}
+                    onChange={(e) => setAiModel(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-xl py-3.5 px-4 text-sm font-sans text-slate-200"
+                  >
+                    {openRouterModels.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                )}
+
+                {aiProvider === 'google' && (
+                  <select
+                    value={aiModel}
+                    onChange={(e) => setAiModel(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-xl py-3.5 px-4 text-sm font-sans text-slate-200"
+                  >
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (الأحدث والافتراضي السريع)</option>
+                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (الأعلى ذكاءً وجودة)</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (الكلاسيكي السريع)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (الكلاسيكي القوي)</option>
+                  </select>
+                )}
+
+                {aiProvider === 'groq' && (
+                  <select
+                    value={aiModel}
+                    onChange={(e) => setAiModel(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-xl py-3.5 px-4 text-sm font-sans text-slate-200"
+                  >
+                    <option value="llama-3.3-70b-specdec">Llama 3.3 70B SpecDec (الأحدث والأسرع افتراضياً)</option>
+                    <option value="llama3-70b-8192">Llama 3 70B (القوي الذكي)</option>
+                    <option value="llama3-8b-8192">Llama 3 8B (الخفيف السريع)</option>
+                    <option value="gemma2-9b-it">Gemma 2 9B (جوجل جيما على جروك)</option>
+                    <option value="mixtral-8x7b-32768">Mixtral 8x7B (المتنوع)</option>
+                  </select>
+                )}
               </div>
 
               {error && (
@@ -413,7 +648,7 @@ export default function AdminDashboard() {
               {configSuccess && (
                 <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-200 text-xs flex items-center gap-2">
                   <Check size={16} className="text-emerald-500 shrink-0" />
-                  <span>تم حفظ مفتاح الـ API وتحديثه في السيرفر بنجاح! 🎉</span>
+                  <span>تم حفظ وتطبيق كافة الإعدادات والموديلات بنجاح! 🎉</span>
                 </div>
               )}
 

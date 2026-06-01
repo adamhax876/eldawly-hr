@@ -65,24 +65,44 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // 3. Fetch OPENROUTER_API_KEY from Supabase config table
-    const { data: configData, error: configError } = await supabaseAdmin
+    // 3. Fetch all configs from Supabase config table at once
+    const { data: allConfigs, error: configError } = await supabaseAdmin
       .from('config')
-      .select('value')
-      .eq('key', 'OPENROUTER_API_KEY')
-      .maybeSingle();
+      .select('key, value');
 
-    if (configError || !configData?.value) {
-      console.error('Supabase fetch error for API key:', configError);
+    if (configError || !allConfigs) {
+      console.error('Supabase fetch error for config:', configError);
       return NextResponse.json({ 
         success: false, 
-        error: 'في مشكلة في إعدادات سيرفر الـ AI. اتأكد إن الأدمن ضاف الـ API Key في لوحة التحكم.' 
+        error: 'في مشكلة في إعدادات سيرفر الـ AI. اتأكد إنك عملت الجداول في Supabase.' 
       }, { status: 500 });
     }
 
-    const openRouterApiKey = configData.value;
+    const configMap = new Map<string, string>();
+    allConfigs.forEach(c => configMap.set(c.key, c.value));
 
-    // 4. Send to OpenRouter API
+    // Get Active Provider and Model
+    const activeProvider = configMap.get('AI_PROVIDER') || 'openrouter';
+    const activeModel = configMap.get('AI_MODEL') || 'google/gemini-2.5-flash';
+
+    // Get API Key according to the chosen active provider
+    let apiKey = '';
+    if (activeProvider === 'openrouter') {
+      apiKey = configMap.get('OPENROUTER_API_KEY') || '';
+    } else if (activeProvider === 'google') {
+      apiKey = configMap.get('GEMINI_API_KEY') || '';
+    } else if (activeProvider === 'groq') {
+      apiKey = configMap.get('GROQ_API_KEY') || '';
+    }
+
+    if (!apiKey) {
+      return NextResponse.json({ 
+        success: false, 
+        error: `برجاء إضافة مفتاح الـ API الخاص بـ ${activeProvider === 'openrouter' ? 'OpenRouter' : activeProvider === 'google' ? 'Google AI Studio' : 'Groq'} في لوحة تحكم الأدمن أولاً.` 
+      }, { status: 400 });
+    }
+
+    // 4. Send to Chosen AI Provider API
     const systemPrompt = `You are "الدولي HR" (The International HR) - a brutally honest, extremely sarcastic, and hilarious Egyptian HR manager.
 Your job is to roast the user's CV in funny, meme-y Egyptian Arabic, and then provide a highly professional, constructive, step-by-step fix in English or Arabic (as appropriate for their CV).
 
@@ -94,50 +114,126 @@ You must respond ONLY with a JSON object in this exact format (do NOT wrap it in
   "fix": "Write a professional, encouraging, neat, step-by-step roadmap to fix the CV, offering specific alternative phrasing and formatting tips."
 }`;
 
-    const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openRouterApiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://eldawly-hr.com',
-        'X-Title': 'الدولي HR',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
-        ],
-        response_format: { type: 'json_object' }
-      })
-    });
+    let responseText = '';
 
-    if (!openRouterResponse.ok) {
-      const errText = await openRouterResponse.text();
-      console.error('OpenRouter API error:', errText);
-      return NextResponse.json({ 
-        success: false, 
-        error: 'فشلنا في التواصل مع سيرفر الـ AI. جرب تاني كمان شوية.' 
-      }, { status: 502 });
+    if (activeProvider === 'openrouter') {
+      const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://eldawly-hr.com',
+          'X-Title': 'الدولي HR',
+        },
+        body: JSON.stringify({
+          model: activeModel || 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!openRouterResponse.ok) {
+        const errText = await openRouterResponse.text();
+        console.error('OpenRouter API error:', errText);
+        return NextResponse.json({ 
+          success: false, 
+          error: 'فشل في الاتصال بمزود الخدمة OpenRouter. جرب تاني أو غير المزود من لوحة التحكم.' 
+        }, { status: 502 });
+      }
+
+      const aiResult = await openRouterResponse.json();
+      responseText = aiResult.choices?.[0]?.message?.content || '';
+
+    } else if (activeProvider === 'google') {
+      // Direct Google Gemini API call
+      let geminiModelName = activeModel || 'gemini-2.5-flash';
+      if (geminiModelName.includes('/')) {
+        geminiModelName = geminiModelName.split('/').pop() || geminiModelName;
+      }
+
+      const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModelName}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: `${systemPrompt}\n\nHere is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
+              ]
+            }
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json'
+          }
+        })
+      });
+
+      if (!geminiResponse.ok) {
+        const errText = await geminiResponse.text();
+        console.error('Google Gemini API error:', errText);
+        return NextResponse.json({ 
+          success: false, 
+          error: 'فشل في الاتصال المباشر بـ Google Gemini API. اتأكد من صحة مفتاح Gemini أو الموديل المختار.' 
+        }, { status: 502 });
+      }
+
+      const aiResult = await geminiResponse.json();
+      responseText = aiResult.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    } else if (activeProvider === 'groq') {
+      // Direct Groq API call
+      let groqModelName = activeModel || 'llama-3.3-70b-specdec';
+      if (groqModelName.includes('/')) {
+        groqModelName = groqModelName.split('/').pop() || groqModelName;
+      }
+
+      const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: groqModelName,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!groqResponse.ok) {
+        const errText = await groqResponse.text();
+        console.error('Groq API error:', errText);
+        return NextResponse.json({ 
+          success: false, 
+          error: 'فشل في الاتصال المباشر بـ Groq API. اتأكد من صحة مفتاح Groq والموديل المختار.' 
+        }, { status: 502 });
+      }
+
+      const aiResult = await groqResponse.json();
+      responseText = aiResult.choices?.[0]?.message?.content || '';
     }
-
-    const aiResult = await openRouterResponse.json();
-    const contentText = aiResult.choices?.[0]?.message?.content || '';
 
     // Parse the JSON output from the AI
     let roastResult = { roast: '', fix: '' };
     try {
-      // Clean up markdown blocks if the AI returned them despite the system prompt
-      let cleanedContent = contentText.trim();
+      let cleanedContent = responseText.trim();
       if (cleanedContent.startsWith('```')) {
         cleanedContent = cleanedContent.replace(/^```json\s*/, '').replace(/```$/, '').trim();
       }
       roastResult = JSON.parse(cleanedContent);
     } catch (parseJsonErr) {
-      console.error('AI JSON Parse Error, content:', contentText);
-      // Fallback: If AI fails to return proper JSON, try splitting or wrap standard text
+      console.error('AI JSON Parse Error, content:', responseText);
       roastResult = {
-        roast: contentText,
+        roast: responseText,
         fix: 'مقدرناش نقسم النص بشكل تلقائي. اقرأ الـ Roast فوق وفلتر منه النصايح بنفسك يا بطل!'
       };
     }

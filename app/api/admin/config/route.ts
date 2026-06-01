@@ -32,15 +32,20 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabaseAdmin
       .from('config')
-      .select('value')
-      .eq('key', 'OPENROUTER_API_KEY')
-      .maybeSingle();
+      .select('key, value');
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, value: data?.value || '' });
+    const configs: Record<string, string> = {};
+    if (data) {
+      data.forEach(item => {
+        configs[item.key] = item.value;
+      });
+    }
+
+    return NextResponse.json({ success: true, configs });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
@@ -53,22 +58,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: auth.error }, { status: 401 });
     }
 
-    const { value } = await request.json();
+    const { configs } = await request.json();
 
-    if (value === undefined) {
-      return NextResponse.json({ success: false, error: 'API Key value is required' }, { status: 400 });
+    if (!configs || typeof configs !== 'object') {
+      return NextResponse.json({ success: false, error: 'Invalid configs payload' }, { status: 400 });
     }
 
-    const { error } = await supabaseAdmin
-      .from('config')
-      .upsert({ 
-        key: 'OPENROUTER_API_KEY', 
-        value,
-        updated_at: new Date().toISOString()
-      });
+    // Upsert all keys sequentially/concurrently
+    const upsertPromises = Object.entries(configs).map(([key, value]) => {
+      return supabaseAdmin
+        .from('config')
+        .upsert({ 
+          key, 
+          value: String(value),
+          updated_at: new Date().toISOString()
+        });
+    });
 
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const results = await Promise.all(upsertPromises);
+    const failedResult = results.find(res => res.error);
+    if (failedResult) {
+      return NextResponse.json({ success: false, error: failedResult.error?.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
