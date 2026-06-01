@@ -216,7 +216,7 @@ You must respond ONLY with a JSON object in this exact format (do NOT wrap it in
 
     } else if (activeProvider === 'groq') {
       // Direct Groq API call
-      let groqModelName = activeModel || 'llama-3.3-70b-specdec';
+      let groqModelName = activeModel || 'llama-3.3-70b-versatile';
       if (groqModelName.includes('/')) {
         groqModelName = groqModelName.split('/').pop() || groqModelName;
       }

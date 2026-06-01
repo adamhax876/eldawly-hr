@@ -499,7 +499,7 @@ export default function AdminDashboard() {
                     type="button"
                     onClick={() => {
                       setAiProvider('groq');
-                      setAiModel('llama-3.3-70b-specdec');
+                      setAiModel('llama-3.3-70b-versatile');
                     }}
                     className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all duration-200 cursor-pointer ${
                       aiProvider === 'groq'
@@ -629,9 +629,8 @@ export default function AdminDashboard() {
                     onChange={(e) => setAiModel(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-xl py-3.5 px-4 text-sm font-sans text-slate-200"
                   >
-                    <option value="llama-3.3-70b-specdec">Llama 3.3 70B SpecDec (الأحدث والأسرع افتراضياً)</option>
-                    <option value="llama3-70b-8192">Llama 3 70B (القوي الذكي)</option>
-                    <option value="llama3-8b-8192">Llama 3 8B (الخفيف السريع)</option>
+                    <option value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile (الأحدث والافتراضي السريع)</option>
+                    <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant (الخفيف السريع جداً)</option>
                     <option value="gemma2-9b-it">Gemma 2 9B (جوجل جيما على جروك)</option>
                     <option value="mixtral-8x7b-32768">Mixtral 8x7B (المتنوع)</option>
                   </select>
