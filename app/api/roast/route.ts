@@ -161,7 +161,7 @@ You must respond ONLY with a JSON object in this exact format (do NOT wrap it in
           'X-Title': 'Eldawly HR',
         },
         body: JSON.stringify({
-          model: activeModel || 'google/gemini-2.5-flash',
+          model: activeModel || 'google/gemini-3.5-flash',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: `Here is my CV content, please roast and fix it:\n\n${cvText.substring(0, 6000)}` }
@@ -184,7 +184,7 @@ You must respond ONLY with a JSON object in this exact format (do NOT wrap it in
 
     } else if (activeProvider === 'google') {
       // Direct Google Gemini API call
-      let geminiModelName = activeModel || 'gemini-2.5-flash';
+      let geminiModelName = activeModel || 'gemini-3.5-flash';
       if (geminiModelName.includes('/')) {
         geminiModelName = geminiModelName.split('/').pop() || geminiModelName;
       }

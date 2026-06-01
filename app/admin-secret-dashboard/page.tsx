@@ -128,7 +128,7 @@ export default function AdminDashboard() {
         setGeminiKey(configs['GEMINI_API_KEY'] || '');
         setGroqKey(configs['GROQ_API_KEY'] || '');
         setAiProvider(configs['AI_PROVIDER'] || 'openrouter');
-        setAiModel(configs['AI_MODEL'] || 'google/gemini-2.5-flash');
+        setAiModel(configs['AI_MODEL'] || 'google/gemini-3.5-flash');
       }
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -171,7 +171,7 @@ export default function AdminDashboard() {
     setGeminiKey('');
     setGroqKey('');
     setAiProvider('openrouter');
-    setAiModel('google/gemini-2.5-flash');
+    setAiModel('google/gemini-3.5-flash');
     setError(null);
   };
 
@@ -481,7 +481,7 @@ export default function AdminDashboard() {
                     type="button"
                     onClick={() => {
                       setAiProvider('google');
-                      setAiModel('gemini-2.5-flash');
+                      setAiModel('gemini-3.5-flash');
                     }}
                     className={`p-4 rounded-xl border flex flex-col items-center gap-2 transition-all duration-200 cursor-pointer ${
                       aiProvider === 'google'
@@ -616,10 +616,11 @@ export default function AdminDashboard() {
                     onChange={(e) => setAiModel(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/60 focus:outline-none rounded-xl py-3.5 px-4 text-sm font-sans text-slate-200"
                   >
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (الأحدث والافتراضي السريع)</option>
-                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (الأعلى ذكاءً وجودة)</option>
-                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (الكلاسيكي السريع)</option>
-                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (الكلاسيكي القوي)</option>
+                    <option value="gemini-3.5-flash">Gemini 3.5 Flash (الأحدث والجراند ماستر في السرعة والدقة - 2026)</option>
+                    <option value="gemini-3.1-pro">Gemini 3.1 Pro (الأعلى ذكاءً وقدرة على التحليل العميق - 2026)</option>
+                    <option value="gemini-3.0-flash">Gemini 3.0 Flash (الجيل الثالث السريع القياسي - 2026)</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (النموذج الكلاسيكي المتوازن)</option>
+                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (النموذج الكلاسيكي القوي)</option>
                   </select>
                 )}
 
