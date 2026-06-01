@@ -14,6 +14,8 @@ export const metadata: Metadata = {
   keywords: ["CV Roast", "الدولي HR", "تعديل السيرة الذاتية", "الذكاء الاصطناعي", "Roast my CV", "سيرة ذاتية"],
 };
 
+import Script from "next/script";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,6 +29,10 @@ export default function RootLayout({
     >
       <body className="font-sans min-h-full flex flex-col bg-[#0f172a] text-slate-100">
         {children}
+        <Script
+          src="https://pl29608514.effectivecpmnetwork.com/55/c0/eb/55c0eb6dd8f8144a4d341a07363edae6.js"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
