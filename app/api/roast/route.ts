@@ -46,6 +46,20 @@ export async function POST(request: Request) {
     
     let cvText = '';
     try {
+      // Polyfill browser globals that pdf-parse / pdfjs-dist requires at runtime in Node.js
+      if (typeof globalThis.DOMMatrix === 'undefined') {
+        // @ts-ignore
+        globalThis.DOMMatrix = class DOMMatrix {};
+      }
+      if (typeof globalThis.ImageData === 'undefined') {
+        // @ts-ignore
+        globalThis.ImageData = class ImageData {};
+      }
+      if (typeof globalThis.Path2D === 'undefined') {
+        // @ts-ignore
+        globalThis.Path2D = class Path2D {};
+      }
+
       // @ts-ignore
       const pdfParser = require('pdf-parse');
       const parsedPdf = await pdfParser(buffer);
